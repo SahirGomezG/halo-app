@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useAuth } from '../auth/useAuth'
+import { buildPendoIdentity } from './pendoIdentity'
 
 export function PendoBridge({ children }: { children: ReactNode }) {
   const { currentVisitor, currentWorkspace, isAuthenticated } = useAuth()
@@ -32,33 +33,7 @@ export function PendoBridge({ children }: { children: ReactNode }) {
     if (!initializedRef.current) return
 
     if (isAuthenticated && currentVisitor && currentWorkspace) {
-      pendo.identify({
-        visitor: {
-          id: currentVisitor.email,
-          email: currentVisitor.email,
-          full_name: `${currentVisitor.firstName} ${currentVisitor.lastName}`,
-          firstName: currentVisitor.firstName,
-          lastName: currentVisitor.lastName,
-          username: currentVisitor.username,
-          jobTitle: currentVisitor.jobTitle,
-          role: currentVisitor.role,
-          yearsExperience: currentVisitor.yearsExperience,
-          location: currentVisitor.location,
-          primaryUseCase: currentVisitor.primaryUseCase,
-          teamSize: currentVisitor.teamSize,
-          topGoals: currentVisitor.topGoals,
-          createdAt: currentVisitor.createdAt,
-        },
-        account: {
-          id: currentWorkspace.companyName,
-          name: currentWorkspace.companyName,
-          companyName: currentWorkspace.companyName,
-          companySize: currentWorkspace.companySize,
-          industry: currentWorkspace.industry,
-          planTier: currentWorkspace.planTier,
-          createdAt: currentWorkspace.createdAt,
-        },
-      })
+      pendo.identify(buildPendoIdentity(currentVisitor, currentWorkspace))
     }
   }, [isAuthenticated, currentVisitor, currentWorkspace])
 

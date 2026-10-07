@@ -124,14 +124,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    const visitor = get().currentVisitor
     const workspace = get().currentWorkspace
     if (typeof pendo !== 'undefined') {
+      // Tracked before any session is cleared so the event is still
+      // attributed to the identified visitor + account.
       pendo.track('signout_completed', {
-        visitorId: visitor?.id ?? '',
         workspaceId: workspace?.id ?? '',
       })
-      pendo.clearSession()
+      // clearSession is not one of the methods the install snippet stubs, so
+      // it is undefined until the agent loads (and forever if the agent is
+      // blocked). Without this guard the TypeError would skip the local
+      // clearSession() below and leave the user signed in.
+      if (typeof pendo.clearSession === 'function') {
+        pendo.clearSession()
+      }
     }
     get().clearSession()
     clearWizardDraft()

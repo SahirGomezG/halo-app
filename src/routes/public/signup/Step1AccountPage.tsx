@@ -25,12 +25,13 @@
  * for every step — DO NOT re-render it here.
  */
 
-import { useForm } from 'react-hook-form'
+import { useForm, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from 'react-router'
 import { Stack, Group, Title, Text } from '@mantine/core'
 import { TextInput, PasswordInput, Button, Anchor } from '../../../ui/primitives'
 import { PENDO_IDS } from '../../../pendo/PENDO_IDS'
+import { trackSignupValidationFailed } from '../../../pendo/signupTracking'
 import {
   step1Schema,
   type Step1Values,
@@ -39,13 +40,18 @@ import {
   readWizardDraft,
   writeWizardDraftStep,
   setWizardPassword,
+  hasStep,
 } from '../../../auth'
 
 const EMAIL_DUPLICATE_MESSAGE = 'An account with this email already exists.'
 
 export function Step1AccountPage(): React.JSX.Element {
   const navigate = useNavigate()
-  const draft = readWizardDraft().step1 ?? {}
+  const wizardDraft = readWizardDraft()
+  const draft = wizardDraft.step1 ?? {}
+  // True when a saved sessionStorage draft pre-filled this step (refresh, or
+  // Back from Step 2) — reported on signup_step1_completed.
+  const resumedFromDraft = hasStep(wizardDraft, 'step1')
   const form = useForm<Step1Values>({
     resolver: zodResolver(step1Schema),
     // Validation fires on Next click only, not on every keystroke — matches the
@@ -61,6 +67,11 @@ export function Step1AccountPage(): React.JSX.Element {
     },
   })
 
+  // signup_validation_failed: Zod blocked Continue — report the invalid field
+  // NAMES only, never their values.
+  const onInvalid = (errors: FieldErrors<Step1Values>) =>
+    trackSignupValidationFailed(1, Object.keys(errors))
+
   const onSubmit = form.handleSubmit((values) => {
     // Uniqueness checks run AFTER Zod schema validation has passed — these are
     // page-handler concerns, not schema refinements (cf. Plan 02-02 notes).
@@ -71,6 +82,7 @@ export function Step1AccountPage(): React.JSX.Element {
       // render the anchor conditionally on the field below via an isDuplicate
       // boolean check against the locked copy.
       form.setError('email', { type: 'manual', message: EMAIL_DUPLICATE_MESSAGE })
+      trackSignupValidationFailed(1, ['email'], 'duplicate_email')
       return
     }
     const usernameDup = findVisitorByUsername(values.username)
@@ -79,6 +91,7 @@ export function Step1AccountPage(): React.JSX.Element {
         type: 'manual',
         message: 'That username is taken — try another.',
       })
+      trackSignupValidationFailed(1, ['username'], 'duplicate_username')
       return
     }
     // CR-02 mitigation: keep the plaintext password OUT of sessionStorage.
@@ -93,10 +106,11 @@ export function Step1AccountPage(): React.JSX.Element {
         hasFirstName: values.firstName.length > 0,
         hasLastName: values.lastName.length > 0,
         hasUsername: values.username.length > 0,
+        resumedFromDraft,
       })
     }
     navigate('/signup/details')
-  })
+  }, onInvalid)
 
   const emailErr = form.formState.errors.email?.message
   const isEmailDuplicate = emailErr === EMAIL_DUPLICATE_MESSAGE

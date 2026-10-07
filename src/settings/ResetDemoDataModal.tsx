@@ -74,6 +74,8 @@ import { Button } from '../ui/primitives'
 import { PENDO_IDS } from '../pendo/PENDO_IDS'
 import { K } from '../storage/keys'
 import { useAuthStore } from '../auth/authStore'
+import { listTasks } from '../tasks/tasksRepo'
+import { listTeammates } from '../team/teamsRepo'
 
 export type ResetDemoDataModalProps = {
   opened: boolean
@@ -84,10 +86,12 @@ export function ResetDemoDataModal({ opened, onClose }: ResetDemoDataModalProps)
   const handleReset = () => {
     // Track the reset event before wiping data.
     if (typeof pendo !== 'undefined') {
-      const auth = useAuthStore.getState()
+      const workspaceId = useAuthStore.getState().currentWorkspace?.id ?? ''
       pendo.track('demo_data_reset', {
-        workspaceId: auth.currentWorkspace?.id ?? '',
-        visitorId: auth.currentVisitor?.id ?? '',
+        workspaceId,
+        // How much of the current workspace's demo data is being wiped.
+        taskCount: workspaceId ? listTasks(workspaceId).length : 0,
+        teammateCount: workspaceId ? listTeammates(workspaceId).length : 0,
       })
     }
 

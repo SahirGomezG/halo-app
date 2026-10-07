@@ -16,6 +16,12 @@ import type { HelpArticle } from '../types'
 
 export type HelpListProps = {
   articles: readonly HelpArticle[]
+  /**
+   * Called when an article link is clicked, with its 1-based position in the
+   * rendered (topic-grouped) list. HelpPage uses it for the
+   * help_search_result_selected track event.
+   */
+  onArticleSelect?: (article: HelpArticle, position: number) => void
 }
 
 type TopicGroup = { topic: string; articles: HelpArticle[] }
@@ -30,8 +36,11 @@ function groupByTopic(articles: readonly HelpArticle[]): TopicGroup[] {
   return [...map.entries()].map(([topic, articles]) => ({ topic, articles }))
 }
 
-export function HelpList({ articles }: HelpListProps): React.JSX.Element {
+export function HelpList({ articles, onArticleSelect }: HelpListProps): React.JSX.Element {
   const groups = groupByTopic(articles)
+  // Articles in rendered (topic-grouped) order — source of the 1-based
+  // position passed to onArticleSelect.
+  const renderedArticles = groups.flatMap((group) => group.articles)
   return (
     <Stack gap="xl">
       {groups.map((group) => (
@@ -57,6 +66,7 @@ export function HelpList({ articles }: HelpListProps): React.JSX.Element {
                 c="inherit"
                 data-pendo-id={PENDO_IDS.help.article.row}
                 data-pendo-article-slug={article.slug}
+                onClick={() => onArticleSelect?.(article, renderedArticles.indexOf(article) + 1)}
               >
                 <Stack gap={4}>
                   <Text size="sm" fw={500}>{article.title}</Text>

@@ -76,6 +76,13 @@ const WorkspaceFormSchema = WorkspaceSchema.pick({
 
 type WorkspaceFormValues = z.infer<typeof WorkspaceFormSchema>
 
+/** Plan tiers in ascending order — derives plan_tier_changed's changeDirection. */
+const PLAN_TIER_RANK: Record<WorkspaceFormValues['planTier'], number> = {
+  Free: 0,
+  Pro: 1,
+  Enterprise: 2,
+}
+
 export function WorkspaceTab(): React.JSX.Element | null {
   const workspace = useAuthStore((s) => s.currentWorkspace)
 
@@ -113,6 +120,21 @@ export function WorkspaceTab(): React.JSX.Element | null {
           planTier: values.planTier,
           previousPlanTier: workspace.planTier,
         })
+        // plan_tier_changed — dedicated upgrade / downgrade milestone. Fires
+        // only when the plan actually moved (workspace_updated fires on every
+        // save). `workspace` is still the pre-save record here.
+        if (values.planTier !== workspace.planTier) {
+          pendo.track('plan_tier_changed', {
+            previousPlanTier: workspace.planTier,
+            newPlanTier: values.planTier,
+            changeDirection:
+              PLAN_TIER_RANK[values.planTier] > PLAN_TIER_RANK[workspace.planTier]
+                ? 'upgrade'
+                : 'downgrade',
+            companySize: values.companySize,
+            industry: values.industry,
+          })
+        }
       }
       form.reset(values)
     } else {

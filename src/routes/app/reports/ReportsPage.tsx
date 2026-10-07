@@ -37,7 +37,7 @@
  * Phase 3 D-01 placeholder convention forbids router edits at phase boundaries.
  */
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { Stack, Group, Title } from '@mantine/core'
 import { IconDownload } from '@tabler/icons-react'
 import dayjs from 'dayjs'
@@ -105,6 +105,39 @@ export function ReportsPage(): React.JSX.Element {
       })
       .sort((a, b) => dayjs(b.createdAt).valueOf() - dayjs(a.createdAt).valueOf())
   }, [allTasks, dateRange, assignee, statusFilter])
+
+  // report_filtered — once per settled change to the Date range / Assignee /
+  // Status filters, after filteredTasks has been recomputed so resultsCount
+  // matches the chart + table. Skips the initial defaults, and a date-only
+  // change to [start, null] — the range picker between its two clicks. Mantine
+  // keeps a half-picked range when the dropdown closes, so Assignee / Status
+  // changes still fire while one is applied. The ref is component-scoped on
+  // purpose: the filters are component state, so both reset together on remount.
+  const lastReportFiltersRef = useRef<{ dates: string; others: string } | null>(null)
+  useEffect(() => {
+    const dates = JSON.stringify(dateRange)
+    const others = JSON.stringify([assignee, statusFilter])
+    const last = lastReportFiltersRef.current
+    if (last === null) {
+      lastReportFiltersRef.current = { dates, others }
+      return
+    }
+    if (dates === last.dates && others === last.others) return
+    if (dateRange[0] && !dateRange[1] && others === last.others) return
+    lastReportFiltersRef.current = { dates, others }
+    if (typeof pendo !== 'undefined') {
+      pendo.track('report_filtered', {
+        dateRangeStart: dateRange[0]?.toISOString() ?? '',
+        dateRangeEnd: dateRange[1]?.toISOString() ?? '',
+        dateRangeDays:
+          dateRange[0] && dateRange[1] ? dayjs(dateRange[1]).diff(dateRange[0], 'day') + 1 : 0,
+        assigneeFilter: assignee,
+        statusFilters: statusFilter.join(', '),
+        resultsCount: filteredTasks.length,
+        totalTaskCount: allTasks.length,
+      })
+    }
+  }, [dateRange, assignee, statusFilter, filteredTasks.length, allTasks.length])
 
   // Defensive narrowing — RequireAuth already gates this path.
   if (!workspaceId || !visitor) return <></>

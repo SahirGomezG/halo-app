@@ -37,7 +37,7 @@
  * prop on the wrapped primitives enforces this at the type level).
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from 'react-router'
@@ -55,6 +55,10 @@ export function SignInPage(): React.JSX.Element {
   // can't accidentally surface a leaked error message through this slot —
   // mirrors the T-02-42-mitigation pattern Plan 02-09 used for `submitError`.
   const [credError, setCredError] = useState<null | 'invalid_credentials'>(null)
+  // Per-visit count of submits that reached the credential check, reported as
+  // `attemptNumber` on signin_completed / signin_failed. Adds retry insight
+  // without revealing which credential was wrong.
+  const attemptCountRef = useRef(0)
 
   const form = useForm<SigninValues>({
     resolver: zodResolver(signinSchema),
@@ -66,6 +70,8 @@ export function SignInPage(): React.JSX.Element {
 
   const onSubmit = form.handleSubmit(async (values) => {
     setCredError(null)
+    attemptCountRef.current += 1
+    const attemptNumber = attemptCountRef.current
     const result = await useAuthStore
       .getState()
       .signInWithCredentials(values.email, values.password)
@@ -73,8 +79,8 @@ export function SignInPage(): React.JSX.Element {
       if (typeof pendo !== 'undefined') {
         const auth = useAuthStore.getState()
         pendo.track('signin_completed', {
-          visitorId: auth.currentVisitor?.id ?? '',
           workspaceId: auth.currentWorkspace?.id ?? '',
+          attemptNumber,
         })
       }
       navigate('/app', { replace: true })
@@ -87,6 +93,7 @@ export function SignInPage(): React.JSX.Element {
     if (typeof pendo !== 'undefined') {
       pendo.track('signin_failed', {
         failureReason: result.reason,
+        attemptNumber,
       })
     }
     setCredError(result.reason)
