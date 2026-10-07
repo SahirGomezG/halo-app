@@ -22,12 +22,13 @@
  * Phase 6 retrofits the agent.
  */
 
-import { useForm } from 'react-hook-form'
+import { useForm, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Navigate, useNavigate } from 'react-router'
 import { Stack, Group, Title } from '@mantine/core'
 import { TextInput, Select, NumberInput, Button } from '../../../ui/primitives'
 import { PENDO_IDS } from '../../../pendo/PENDO_IDS'
+import { trackSignupValidationFailed } from '../../../pendo/signupTracking'
 import {
   step2Schema,
   type Step2Values,
@@ -73,6 +74,11 @@ export function Step2DetailsPage(): React.JSX.Element {
     },
   })
 
+  // signup_validation_failed: Zod blocked Continue — report the invalid field
+  // NAMES only, never their values.
+  const onInvalid = (errors: FieldErrors<Step2Values>) =>
+    trackSignupValidationFailed(2, Object.keys(errors))
+
   const onSubmit = form.handleSubmit((values) => {
     writeWizardDraftStep('step2', values)
     if (typeof pendo !== 'undefined') {
@@ -84,7 +90,7 @@ export function Step2DetailsPage(): React.JSX.Element {
       })
     }
     navigate('/signup/company')
-  })
+  }, onInvalid)
 
   const onBack = () => {
     // Per UI-SPEC: Back persists current values (even invalid) into the draft,

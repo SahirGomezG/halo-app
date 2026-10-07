@@ -35,7 +35,7 @@
  * boundaries.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Stack, Group, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconPlus, IconTrash } from '@tabler/icons-react'
@@ -69,6 +69,8 @@ export function ListsPage(): React.JSX.Element {
   const [createOpen, setCreateOpen] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null)
+  // Which entry point opened the delete confirm — reported on task_deleted.
+  const [deleteSource, setDeleteSource] = useState<'row_kebab' | 'edit_modal'>('row_kebab')
 
   const allTasks = useMemo(
     () => (workspaceId ? listTasks(workspaceId) : []),
@@ -94,6 +96,44 @@ export function ListsPage(): React.JSX.Element {
     setPriorityFilter('all')
     setAssigneeFilter('all')
   }
+
+  // task_list_filtered — once per user change to the Status / Priority /
+  // Assignee filters (including "Clear filters"), after filteredTasks has been
+  // recomputed so resultsCount is accurate (0 = FilteredEmptyState). Keyed on
+  // the filter values, so task mutations that only change the counts don't
+  // re-fire it. The ref only skips the initial all-'all' defaults; it is
+  // component-scoped on purpose — the filters are component state (D-05), so
+  // both reset together on remount and a return visit can't mis-fire.
+  const lastFilterKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    const key = `${statusFilter}|${priorityFilter}|${assigneeFilter}`
+    if (lastFilterKeyRef.current === null) {
+      lastFilterKeyRef.current = key
+      return
+    }
+    if (lastFilterKeyRef.current === key) return
+    lastFilterKeyRef.current = key
+    if (typeof pendo !== 'undefined') {
+      pendo.track('task_list_filtered', {
+        statusFilter,
+        priorityFilter,
+        assigneeFilter,
+        isMyTasks: assigneeFilter === visitor?.id,
+        activeFilterCount: [statusFilter, priorityFilter, assigneeFilter].filter(
+          (f) => f !== 'all',
+        ).length,
+        resultsCount: filteredTasks.length,
+        totalTaskCount: allTasks.length,
+      })
+    }
+  }, [
+    statusFilter,
+    priorityFilter,
+    assigneeFilter,
+    filteredTasks.length,
+    allTasks.length,
+    visitor?.id,
+  ])
 
   // Defensive narrowing — RequireAuth + AppLayout already gate this, but
   // mirror Dashboard.tsx line 288's belt-and-suspenders pattern.
@@ -142,7 +182,10 @@ export function ListsPage(): React.JSX.Element {
               tasks={filteredTasks}
               workspaceId={workspaceId}
               onEdit={(task) => setEditTask(task)}
-              onDelete={(task) => setDeleteTarget(task)}
+              onDelete={(task) => {
+                setDeleteSource('row_kebab')
+                setDeleteTarget(task)
+              }}
               onToggleComplete={(task, nextDone) => {
                 updateTask(workspaceId, task.id, {
                   // Off-toggle: restore prior non-done status if recorded;
@@ -158,6 +201,7 @@ export function ListsPage(): React.JSX.Element {
                       assigneeId: task.assignee?.id ?? '',
                       hadDueDate: task.dueDate !== null,
                       wasOverdue: task.dueDate !== null && new Date(task.dueDate) < new Date(),
+                      source: 'checkbox',
                     })
                   } else {
                     pendo.track('task_uncompleted', {
@@ -165,6 +209,7 @@ export function ListsPage(): React.JSX.Element {
                       restoredStatus: task.prevStatus ?? 'todo',
                       priority: task.priority,
                       assigneeId: task.assignee?.id ?? '',
+                      source: 'checkbox',
                     })
                   }
                 }
@@ -193,7 +238,10 @@ export function ListsPage(): React.JSX.Element {
         opened={editTask !== null}
         onClose={() => setEditTask(null)}
         onSuccess={refresh}
-        onRequestDelete={(task) => setDeleteTarget(task)}
+        onRequestDelete={(task) => {
+          setDeleteSource('edit_modal')
+          setDeleteTarget(task)
+        }}
         workspaceId={workspaceId}
         visitor={visitor}
         mode="edit"
@@ -212,6 +260,7 @@ export function ListsPage(): React.JSX.Element {
                 taskStatus: deleteTarget.status,
                 taskPriority: deleteTarget.priority,
                 hadAssignee: Boolean(deleteTarget.assignee?.id),
+                source: deleteSource,
               })
             }
             deleteTask(workspaceId, deleteTarget.id)

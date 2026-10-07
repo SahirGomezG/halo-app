@@ -187,7 +187,7 @@ export function TaskFormModal({
 
   const onSubmit = form.handleSubmit((values) => {
     if (mode === 'create') {
-      createTask(workspaceId, { ...values, completedAt: null })
+      const created = createTask(workspaceId, { ...values, completedAt: null })
       notifications.show({
         title: 'Task created',
         message: '',
@@ -197,9 +197,11 @@ export function TaskFormModal({
       })
       if (typeof pendo !== 'undefined') {
         pendo.track('task_created', {
+          taskId: created.id,
           status: values.status,
           priority: values.priority,
           hasAssignee: Boolean(values.assignee?.id),
+          assignedToSelf: values.assignee.id === visitor.id,
           hasDueDate: values.dueDate !== null,
           hasDescription: values.description.length > 0,
         })
@@ -224,6 +226,31 @@ export function TaskFormModal({
           hasAssignee: Boolean(values.assignee?.id),
           hasDueDate: values.dueDate !== null,
         })
+        // A Status edit across Done is also a completion / re-open. Mirror the
+        // Lists checkbox events (same properties, taken from the task as it was
+        // before this save) so task_completed / task_uncompleted count both paths.
+        const wasDone = initialTask.status === 'done'
+        const isDone = values.status === 'done'
+        if (!wasDone && isDone) {
+          pendo.track('task_completed', {
+            taskId: initialTask.id,
+            previousStatus: initialTask.status,
+            priority: initialTask.priority,
+            assigneeId: initialTask.assignee?.id ?? '',
+            hadDueDate: initialTask.dueDate !== null,
+            wasOverdue:
+              initialTask.dueDate !== null && new Date(initialTask.dueDate) < new Date(),
+            source: 'edit_modal',
+          })
+        } else if (wasDone && !isDone) {
+          pendo.track('task_uncompleted', {
+            taskId: initialTask.id,
+            restoredStatus: values.status,
+            priority: initialTask.priority,
+            assigneeId: initialTask.assignee?.id ?? '',
+            source: 'edit_modal',
+          })
+        }
       }
     }
     onSuccess()

@@ -64,6 +64,8 @@ export function TeamPage(): React.JSX.Element {
         teammateId,
         previousRole,
         newRole: nextRole,
+        // 'invited' = role adjusted before the invite was accepted.
+        teammateStatus: teammate?.status ?? '',
         workspaceId,
       })
     }

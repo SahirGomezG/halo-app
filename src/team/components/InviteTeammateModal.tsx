@@ -34,7 +34,14 @@ import { notifications } from '@mantine/notifications'
 import { IconCheck } from '@tabler/icons-react'
 import { TextInput, Select, Button } from '../../ui/primitives'
 import { PENDO_IDS } from '../../pendo/PENDO_IDS'
+import { useAuthStore } from '../../auth/authStore'
 import { createTeammate, findTeammateByEmail } from '../teamsRepo'
+
+/** Lower-cased domain part of an email address ('' when there is no '@'). */
+function emailDomain(email: string): string {
+  const at = email.lastIndexOf('@')
+  return at === -1 ? '' : email.slice(at + 1).toLowerCase()
+}
 
 export type InviteTeammateModalProps = {
   opened: boolean
@@ -119,8 +126,13 @@ export function InviteTeammateModal({
     })
 
     if (typeof pendo !== 'undefined') {
+      // The invitee's address is a third party's PII — send only its domain,
+      // plus whether it matches the inviter's own domain.
+      const teammateEmailDomain = emailDomain(values.email)
+      const inviterEmail = useAuthStore.getState().currentVisitor?.email ?? ''
       pendo.track('teammate_invited', {
-        teammateEmail: values.email.toLowerCase(),
+        teammateEmailDomain,
+        isSameDomain: inviterEmail !== '' && emailDomain(inviterEmail) === teammateEmailDomain,
         workspaceRole: values.workspaceRole,
         workspaceId,
       })

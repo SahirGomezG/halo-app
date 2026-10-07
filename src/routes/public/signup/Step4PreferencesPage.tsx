@@ -22,13 +22,15 @@
  */
 
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Navigate, useNavigate } from 'react-router'
 import { Stack, Group, Title, Alert } from '@mantine/core'
 import { IconAlertCircle } from '@tabler/icons-react'
 import { Select, NumberInput, MultiSelect, Button } from '../../../ui/primitives'
 import { PENDO_IDS } from '../../../pendo/PENDO_IDS'
+import { buildPendoIdentity } from '../../../pendo/pendoIdentity'
+import { trackSignupValidationFailed } from '../../../pendo/signupTracking'
 import {
   step1Schema,
   step2Schema,
@@ -63,6 +65,13 @@ const GOAL_OPTIONS = [
   'Onboard the team',
   'Replace another tool',
 ] as const
+
+/** `failureReason` values reported on signup_failed. */
+type SignupFailureReason =
+  | 'duplicate_email'
+  | 'duplicate_username'
+  | 'password_not_in_memory'
+  | 'generic_failure'
 
 export function Step4PreferencesPage(): React.JSX.Element {
   const navigate = useNavigate()
@@ -99,7 +108,24 @@ export function Step4PreferencesPage(): React.JSX.Element {
     },
   })
 
+  // signup_validation_failed: Zod blocked Create account — report the invalid
+  // field NAMES only, never their values.
+  const onInvalid = (errors: FieldErrors<Step4Values>) =>
+    trackSignupValidationFailed(4, Object.keys(errors))
+
   const onSubmit = form.handleSubmit(async (step4Values) => {
+    // signup_failed: the final submit passed form validation but did not
+    // convert. Fired next to each setSubmitError(...) below.
+    const trackSignupFailed = (failureReason: SignupFailureReason, err?: unknown) => {
+      if (typeof pendo !== 'undefined') {
+        pendo.track('signup_failed', {
+          failureReason,
+          errorName: err instanceof Error ? err.name : '',
+          primaryUseCase: step4Values.primaryUseCase,
+          teamSize: step4Values.teamSize,
+        })
+      }
+    }
     setSubmitError(null)
     try {
       // Defense in depth — re-read the draft and re-validate every prior step
@@ -135,10 +161,12 @@ export function Step4PreferencesPage(): React.JSX.Element {
       // silently shadows. Surface as a form-level Alert and abort.
       if (findVisitorByEmail(s1.email)) {
         setSubmitError('duplicate_email')
+        trackSignupFailed('duplicate_email')
         return
       }
       if (findVisitorByUsername(s1.username)) {
         setSubmitError('duplicate_username')
+        trackSignupFailed('duplicate_username')
         return
       }
 
@@ -179,6 +207,11 @@ export function Step4PreferencesPage(): React.JSX.Element {
 
       // Track signup completion before navigating away.
       if (typeof pendo !== 'undefined') {
+        // Identify the new visitor + account first. PendoBridge only
+        // re-identifies after React commits the session written above, which
+        // happens after this synchronous block — without this call the
+        // conversion would be attributed to the anonymous pre-signup visitor.
+        pendo.identify(buildPendoIdentity(visitor, workspace))
         pendo.track('signup_completed', {
           primaryUseCase: step4Values.primaryUseCase,
           teamSize: step4Values.teamSize,
@@ -200,9 +233,15 @@ export function Step4PreferencesPage(): React.JSX.Element {
       // and stay on /signup/preferences. The wizard draft is intentionally NOT
       // cleared on failure — user can retry by clicking Create account again.
       console.error('[signup] completion failed:', err)
+      // A missing in-memory wizard password means the user refreshed
+      // mid-wizard — reported separately from other completion failures.
+      trackSignupFailed(
+        getWizardPassword() === null ? 'password_not_in_memory' : 'generic_failure',
+        err,
+      )
       setSubmitError('generic_failure')
     }
-  })
+  }, onInvalid)
 
   const onBack = () => {
     // Per UI-SPEC: Back persists current values (even invalid) into the draft,
