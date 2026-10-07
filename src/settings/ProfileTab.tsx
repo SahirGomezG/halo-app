@@ -124,6 +124,15 @@ export function ProfileTab(): React.JSX.Element | null {
         icon: <IconAlertCircle size={18} />,
         autoClose: 5000,
       })
+      // settings_save_failed — updateVisitor found no record to update (e.g.
+      // demo data was reset or storage was cleared in another tab).
+      if (typeof pendo !== 'undefined') {
+        pendo.track('settings_save_failed', {
+          section: 'profile',
+          fieldsChanged: Object.keys(form.formState.dirtyFields).join(', '),
+          failureReason: 'record_not_found',
+        })
+      }
     }
   })
 

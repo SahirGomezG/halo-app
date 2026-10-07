@@ -31,10 +31,11 @@
  * SignInPage is NOT a child of `SignupShell` — it has its own Container and
  * is not part of the wizard (no Stepper, no draft state, no Back button).
  *
- * The page does NOT invoke any Pendo runtime API — Phase 6 retrofits the
- * agent's identify-on-success call onto the success branch. Every interactive
- * control sources `pendoId` from `PENDO_IDS.signin.*` (the typed `pendoId`
- * prop on the wrapped primitives enforces this at the type level).
+ * Pendo: the success branch identifies the signed-in visitor + account
+ * (`buildPendoIdentity`) and then tracks `signin_completed`; a failed
+ * credential check tracks `signin_failed`. Every interactive control sources
+ * `pendoId` from `PENDO_IDS.signin.*` (the typed `pendoId` prop on the
+ * wrapped primitives enforces this at the type level).
  */
 
 import { useRef, useState } from 'react'
@@ -45,6 +46,7 @@ import { Container, Stack, Paper, Title, Text, Alert } from '@mantine/core'
 import { IconAlertCircle } from '@tabler/icons-react'
 import { TextInput, PasswordInput, Button, Anchor } from '../../ui/primitives'
 import { PENDO_IDS } from '../../pendo/PENDO_IDS'
+import { buildPendoIdentity } from '../../pendo/pendoIdentity'
 import { signinSchema, type SigninValues, useAuthStore } from '../../auth'
 
 export function SignInPage(): React.JSX.Element {
@@ -78,6 +80,14 @@ export function SignInPage(): React.JSX.Element {
     if (result.ok) {
       if (typeof pendo !== 'undefined') {
         const auth = useAuthStore.getState()
+        // Identify the signed-in visitor + account first (mirrors Step 4's
+        // signup_completed): PendoBridge only re-identifies after React
+        // commits the new session, which isn't guaranteed to happen before
+        // this continuation runs — without this call the event could be
+        // credited to the anonymous visitor.
+        if (auth.currentVisitor && auth.currentWorkspace) {
+          pendo.identify(buildPendoIdentity(auth.currentVisitor, auth.currentWorkspace))
+        }
         pendo.track('signin_completed', {
           workspaceId: auth.currentWorkspace?.id ?? '',
           attemptNumber,
