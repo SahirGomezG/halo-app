@@ -303,7 +303,26 @@ export function Dashboard(): React.JSX.Element {
             { value: '90', label: '90d' },
           ]}
           value={range}
-          onChange={(v) => setRange(v as Range)}
+          onChange={(v) => {
+            const nextRange = v as Range
+            if (typeof pendo !== 'undefined') {
+              // dashboard_time_range_changed — carries the KPI values for the
+              // newly selected range. The memoized `kpis` still hold the old
+              // range inside this handler, so recompute for `nextRange`.
+              const next = computeKpis(tasks, nowRef, nextRange)
+              pendo.track('dashboard_time_range_changed', {
+                rangeDays: Number(nextRange),
+                previousRangeDays: Number(range),
+                activeTasks: next.active,
+                completedInRange: next.completedInRange,
+                overdue: next.overdue,
+                completionRate: next.completionRate,
+                avgCycleTime: next.avgCycleTime,
+                totalTaskCount: tasks.length,
+              })
+            }
+            setRange(nextRange)
+          }}
           data-pendo-id={PENDO_IDS.dashboard.timeRange}
         />
       </Group>

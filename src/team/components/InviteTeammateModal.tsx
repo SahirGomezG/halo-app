@@ -26,7 +26,7 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Modal, Stack, Group } from '@mantine/core'
@@ -98,6 +98,23 @@ export function InviteTeammateModal({
     }
   }, [opened, form, defaultValues])
 
+  // teammate_invite_validation_failed: Zod blocked Send invite — an empty or
+  // invalid email, or an address that is already a teammate. Reports field
+  // NAMES only, never the typed address.
+  const onInvalid = (errors: FieldErrors<InviteFormValues>) => {
+    if (typeof pendo !== 'undefined') {
+      const invalidFields = Object.keys(errors)
+      pendo.track('teammate_invite_validation_failed', {
+        invalidFields: invalidFields.join(', '),
+        errorCount: invalidFields.length,
+        // The .superRefine duplicate-teammate issue surfaces with type 'custom'.
+        failureType: errors.email?.type === 'custom' ? 'duplicate_teammate' : 'validation',
+        workspaceRole: form.getValues('workspaceRole'),
+        workspaceId,
+      })
+    }
+  }
+
   const onSubmit = form.handleSubmit((values) => {
     // D-03: derive firstName from email local-part (split on . or _, Title-Case each segment).
     const localPart = values.email.split('@')[0]
@@ -140,7 +157,7 @@ export function InviteTeammateModal({
 
     onSuccess()
     onClose()
-  })
+  }, onInvalid)
 
   return (
     <Modal
